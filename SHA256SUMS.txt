@@ -1,0 +1,2 @@
+cd85cf24d4406d536c778b07fb223bdc22780bad6110fe7dfcf9ce60df6ce0d0  Narana-Edition-0.14.4.zip
+3741b21ca57ff9aa41d5c1d6ee8cb548fae7706b2a0f647b7d982426aad36d17  Narana-Edition-0.14.4.apk
