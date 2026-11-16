@@ -1,0 +1,2 @@
+9e29acebb2c14d2f263c33c885c4e60b9abce9a08672fd07408f4540ad64dd9c  Narana-0.14.7-preset-3col-v54.zip
+9b2168a99f45b8a975e3a3ca8e8c95c8664c76f354522cbff150f7be3d39e174  Narana-0.14.7-preset-3col-update.apk
