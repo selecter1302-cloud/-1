@@ -30,7 +30,7 @@ jobs:
           mkdir -p /tmp/v58
           unzip -q /tmp/v57.apk 'assets/scripts/*' 'assets/assets.sparsepck' -d /tmp/v58
           python3 work/v58_patch.py /tmp/v58/assets/scripts
-          python3 work/v58_stage_unsigned.py /tmp/v57.apk /tmp/v58/assets/scripts /tmp/v58-unaligned.apk
+          python3 work/v58_stage_unsigned.py /tmp/v57.apk /tmp/v58/assets /tmp/v58-unaligned.apk
           "$ZIPALIGN" -P 16 -f 4 /tmp/v58-unaligned.apk /tmp/v58-staged-unsigned.apk
           "$ZIPALIGN" -c -P 16 -v 4 /tmp/v58-staged-unsigned.apk | tail -8
           python3 - <<'PY'
