@@ -1,0 +1,46 @@
+name: Narana v58 APK inspection
+on:
+  push:
+    paths:
+      - '.github/workflows/narana-v58-inspection.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout Git LFS binary
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+      - name: Verify base APK and list scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          file='Narana-0.14.7-layout-v57.zip'
+          test "$(stat -c%s "$file")" = 511604906
+          echo '3f5cc8f872d7f9bf63a479adbc6de00c2819fdc73266fb4e9cee992e8aa19909  Narana-0.14.7-layout-v57.zip' | sha256sum -c
+          unzip -p "$file" Narana-0.14.7-layout-v57.apk > /tmp/narana-v57.apk
+          echo 'f250f70ca53c2a5d1740a348185309b44b8454e5c2c52d148b8135894a18081b  /tmp/narana-v57.apk' | sha256sum -c
+          python3 - <<'PY'
+          import zipfile
+          apk=zipfile.ZipFile('/tmp/narana-v57.apk')
+          names=apk.namelist()
+          print('APK_ENTRIES',len(names))
+          print('SCRIPT_ENTRIES',len([n for n in names if n.startswith('assets/scripts/')]))
+          for n in names:
+            if n.startswith('assets/scripts/') and any(s in n.lower() for s in ('expression','sex_scene','visit','harem','cg_view','invite','room','guest')):
+              print('SCRIPT',n)
+          for n in ('assets/assets.sparsepck','assets/scripts/ui/expression_surgery.gd','assets/scripts/ui/expression_sets_panel.gd','assets/scripts/ui/cg_view.gd','assets/scripts/ui/overlays/sex_scene.gd','assets/scripts/scenarios/expression_surgery.gd'):
+            print('ENTRY',n,'EXISTS',n in names,'LEN',len(apk.read(n)) if n in names else 0)
+          for n in names:
+            if n.startswith('assets/scripts/') and n.endswith('.gd'):
+              try: s=apk.read(n).decode('utf-8')
+              except: continue
+              keys=('누구를 방에 들일까','모두 받아들이기','둘 다 돌려보낸다','후배위','정상위')
+              if any(k in s for k in keys):
+                matches=[(i,l[:240]) for i,l in enumerate(s.splitlines(),1) if any(k in l for k in keys)]
+                print('KEYWORD_FILE',n,'MATCHES',matches[:30])
+          PY
