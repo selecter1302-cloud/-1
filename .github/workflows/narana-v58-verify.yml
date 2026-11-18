@@ -1,0 +1,76 @@
+name: Narana v58 patch integrity check
+on:
+  push:
+    paths: ['.github/workflows/narana-v58-verify.yml']
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - name: Verify original and patch real scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '3f5cc8f872d7f9bf63a479adbc6de00c2819fdc73266fb4e9cee992e8aa19909  Narana-0.14.7-layout-v57.zip' | sha256sum -c
+          unzip -p Narana-0.14.7-layout-v57.zip Narana-0.14.7-layout-v57.apk > /tmp/v57.apk
+          echo 'f250f70ca53c2a5d1740a348185309b44b8454e5c2c52d148b8135894a18081b  /tmp/v57.apk' | sha256sum -c
+          mkdir -p /tmp/v58/assets
+          unzip -q /tmp/v57.apk 'assets/scripts/*' 'assets/assets.sparsepck' -d /tmp/v58
+          python3 work/v58_patch.py /tmp/v58/assets/scripts
+          python3 - <<'PY'
+          from pathlib import Path
+          import struct,hashlib,zipfile
+          work=Path('/tmp/v58/assets')
+          orig=zipfile.ZipFile('/tmp/v57.apk')
+          pck=bytearray((work/'assets.sparsepck').read_bytes())
+          count=struct.unpack_from('<I',pck,104)[0]
+          pos=108
+          entries={}
+          for _ in range(count):
+              length=struct.unpack_from('<I',pck,pos)[0];pos+=4
+              name=pck[pos:pos+length].split(b'\0',1)[0].decode();pos+=length
+              pos+=8
+              size_off=pos;size=struct.unpack_from('<Q',pck,pos)[0];pos+=8
+              md5_off=pos;md5=pck[pos:pos+16];pos+=16
+              pos+=4
+              entries[name]=(size,md5,size_off,md5_off)
+          assert pos==len(pck)
+          changed=['scripts/behavior_night.gd','scripts/scenarios/expression_filter.gd','scripts/ui/cg_view.gd','scripts/ui/expression_surgery.gd','scripts/ui/face_window_view.gd']
+          for rel in changed:
+              b=(work/rel).read_bytes()
+              _,_,size_at,md5_at=entries[rel]
+              struct.pack_into('<Q',pck,size_at,len(b))
+              pck[md5_at:md5_at+16]=hashlib.md5(b).digest()
+              print('PATCHED',rel,len(b),hashlib.sha256(b).hexdigest())
+          assert [hashlib.sha256((work/rel).read_bytes()).hexdigest() for rel in changed]==[
+            '31634668305885a224e368407745b5e450be83d85800beee9897ac77043096e8',
+            'c6a099b2bc74a189dde48398f5d0356c62cfacc812333bb1b5c442a6aecfe928',
+            '0668718365fdc1c61f9323070c5bffa91e54a68faac5228b2d52472d201f818b',
+            'c1fbc85bee45dd87db9cc16f2a63f64e83a5ccf44746950c202a82e542f4326e',
+            '6886f234fda325235b9bddc6b66f963c4f210a5d359bbd0ffde2aeb53d6ad376']
+          present=set(orig.namelist())
+          expected={f'assets/{name}' for name in entries}
+          assert expected <= present,('missing',list(expected-present)[:10])
+          result=0
+          for name,(size,md5,size_at,md5_at) in entries.items():
+              b=(work/name).read_bytes() if name in changed else orig.read('assets/'+name)
+              if len(b)!=struct.unpack_from('<Q',pck,size_at)[0] or hashlib.md5(b).digest()!=pck[md5_at:md5_at+16]:raise RuntimeError('PCK MISMATCH: '+name)
+              result+=1
+          print('PACK_ENTRIES_VERIFIED',result,'PACK_BYTES',len(pck))
+          assert result==2890
+          (work/'assets.sparsepck').write_bytes(pck)
+          print('ORIGINAL_FILES',len(present),'UNCHANGED_GDC_ENTRIES',sum(1 for name in entries if name.endswith('.gdc')))
+          PY
+      - name: Godot 4.6.3 headless parser available
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 -o /tmp/godot463.zip 'https://github.com/godotengine/godot/releases/download/4.6.3-stable/Godot_v4.6.3-stable_linux.x86_64.zip'
+          unzip -qo /tmp/godot463.zip -d /tmp/
+          chmod +x /tmp/Godot_v4.6.3-stable_linux.x86_64
+          /tmp/Godot_v4.6.3-stable_linux.x86_64 --version
