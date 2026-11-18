@@ -1,0 +1,61 @@
+name: Narana v58 unsigned staging APK
+on:
+  push:
+    paths: ['.github/workflows/narana-v58-stage.yml']
+permissions:
+  contents: read
+jobs:
+  stage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - name: Patch versionCode and full resource table, stage unsigned APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '3f5cc8f872d7f9bf63a479adbc6de00c2819fdc73266fb4e9cee992e8aa19909  Narana-0.14.7-layout-v57.zip' | sha256sum -c
+          unzip -p Narana-0.14.7-layout-v57.zip Narana-0.14.7-layout-v57.apk >/tmp/v57.apk
+          echo 'f250f70ca53c2a5d1740a348185309b44b8454e5c2c52d148b8135894a18081b  /tmp/v57.apk' | sha256sum -c
+          find "$ANDROID_HOME/build-tools" -maxdepth 2 -name apksigner | sort -V | tail -1 >/tmp/apksigner_path
+          find "$ANDROID_HOME/build-tools" -maxdepth 2 -name zipalign | sort -V | tail -1 >/tmp/zipalign_path
+          APKSIGNER="$(cat /tmp/apksigner_path)"
+          ZIPALIGN="$(cat /tmp/zipalign_path)"
+          test -x "$APKSIGNER"
+          test -x "$ZIPALIGN"
+          "$APKSIGNER" verify --print-certs /tmp/v57.apk | tee /tmp/original_signer.txt
+          grep -F '52a1b6f90047314502c2160124f655c7add4d3aa8d7ecb05152b710d56434297' /tmp/original_signer.txt
+          mkdir -p /tmp/v58
+          unzip -q /tmp/v57.apk 'assets/scripts/*' 'assets/assets.sparsepck' -d /tmp/v58
+          python3 work/v58_patch.py /tmp/v58/assets/scripts
+          python3 work/v58_stage_unsigned.py /tmp/v57.apk /tmp/v58/assets/scripts /tmp/v58-unaligned.apk
+          "$ZIPALIGN" -P 16 -f 4 /tmp/v58-unaligned.apk /tmp/v58-staged-unsigned.apk
+          "$ZIPALIGN" -c -P 16 -v 4 /tmp/v58-staged-unsigned.apk | tail -8
+          python3 - <<'PY'
+          import zipfile,struct,hashlib
+          zp=zipfile.ZipFile('/tmp/v58-staged-unsigned.apk')
+          a=zp.read('AndroidManifest.xml');p=a.index(b'versionCode'.decode().encode('utf-16le'))
+          assert a[0:2]==b'\x03\x00'
+          print('ALIGNED_ZIP_ENTRIES',len(zp.namelist()))
+          print('ALIGNED_SHA256',hashlib.sha256(open('/tmp/v58-staged-unsigned.apk','rb').read()).hexdigest())
+          assert zp.testzip() is None
+          pack=zp.read('assets/assets.sparsepck');c=struct.unpack_from('<I',pack,104)[0]
+          pos=108
+          for _ in range(c):
+              n=struct.unpack_from('<I',pack,pos)[0];pos+=4
+              name=pack[pos:pos+n].split(b'\0',1)[0].decode();pos+=n+8
+              size=struct.unpack_from('<Q',pack,pos)[0];pos+=8
+              md5=pack[pos:pos+16];pos+=20
+              content=zp.read('assets/'+name)
+              assert len(content)==size and hashlib.md5(content).digest()==md5,name
+          assert c==2890 and pos==len(pack)
+          print('FINAL_ZIP_ENTRIES_VERIFIED',c)
+          PY
+      - name: Upload unsigned internal staging artifact only
+        uses: actions/upload-artifact@v4
+        with:
+          name: Narana-v58-UNSIGNED-not-for-install
+          path: /tmp/v58-staged-unsigned.apk
+          retention-days: 1
