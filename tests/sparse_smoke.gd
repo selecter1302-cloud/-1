@@ -44,6 +44,17 @@ func expression_setup() -> void:
 	main.sex_scene.refresh()
 	await frames()
 
+func find_preset(item: TreeItem, condition: Dictionary) -> TreeItem:
+	var data = item.get_metadata(0)
+	if data is Dictionary and data.view == filter.DOGGY_WINDOW and data.get("filters", {}) == condition:
+		return item
+	for child in item.get_children():
+		var found = find_preset(child, condition)
+		if found != null:
+			item.collapsed = false
+			return found
+	return null
+
 func expression_tests(restart: bool) -> void:
 	await expression_setup()
 	var state = game.state
@@ -86,11 +97,23 @@ func expression_tests(restart: bool) -> void:
 	surgery._panel.find_child("SavedExpressionPresetsButton", true, false).pressed.emit()
 	var tree = surgery._preset_popup.find_child("ExpressionPresetTree", true, false)
 	check(tree.get_root().get_first_child().collapsed, "saved preset tree is collapsible")
-	surgery._preview_preset(origin.merged({"targets": ["endure"]}))
-	check(is_instance_valid(surgery._zoom) and surgery._zoom.find_child("ApplyExpressionPreset", true, false) != null, "existing preset preview opens with copy option")
+	var item = find_preset(tree.get_root(), origin.filters)
+	check(item != null, "find saved window preset in expanded tree")
+	await frames()
+	var hold = InputEventMouseButton.new()
+	hold.button_index = MOUSE_BUTTON_LEFT
+	hold.pressed = true
+	hold.position = tree.get_item_area_rect(item, 0).get_center()
+	tree.gui_input.emit(hold)
+	await create_timer(0.65).timeout
+	check(is_instance_valid(surgery._zoom) and surgery._zoom.find_child("ApplyExpressionPreset", true, false) != null, "long press opens the saved preset preview")
+	if not is_instance_valid(surgery._zoom):
+		surgery.close()
+		return
 	surgery._zoom.find_child("ApplyExpressionPreset", true, false).pressed.emit()
 	check(surgery._set_choices == ["endure"] and surgery._context.filters == context.filters and surgery._context.relation == context.relation, "preset copy only replaces draft choices")
 	check(surgery_store.targets(surgery_store.current_rule(context, state)) == ["cold"], "preset draft leaves saved current rule intact")
+	check(surgery_store.rules().any(func(row): return surgery_store.identity(row) == surgery_store.identity(origin) and surgery_store.targets(row) == ["endure"]), "preset copy leaves original preset intact")
 	surgery.close()
 	sex._cg.set_face("endure")
 	check(sex._face_window.expression == "cold", "CG expression update follows saved window branch")
@@ -147,6 +170,58 @@ func visit_tests() -> void:
 			var before = [state.day, state.slot]
 			game.next_slot()
 			check([state.day, state.slot] != before, label + " allows subsequent game progress")
+
+func group_layout_tests() -> void:
+	for count in [3, 4]:
+		game.new_game()
+		var state = game.state
+		var ids = ["reimu", "marisa", "sakuya", "sanae"].slice(0, count)
+		for id in ids:
+			state.set_room(id, state.pc["room"])
+			state.heroines[id]["pc"]["relation"] = "lover"
+		var group = load("res://scripts/scene_sex_harem.gd")
+		group.start(state, ids)
+		var sex = main.sex_scene
+		sex.refresh()
+		var view = sex._harem
+		check(view.visible and view._slot_rect("back2").visible == (count == 4), "%d-person game rendering" % count)
+		var saved = layout.read()
+		saved[layout.key(count, "marisa", "left")] = {"x": 80, "y": -30, "scale": 1.4}
+		saved[layout.key(count, "marisa", "partner")] = {"x": -34, "y": 10, "scale": 0.9}
+		saved[layout.key(count, "sakuya", "left")] = {"x": 24, "y": 31, "scale": 1.2}
+		check(layout.save(saved) == OK, "%d-person layout is writable" % count)
+		sex._harem_sel = "partner"
+		sex._refresh_harem(state)
+		await frames()
+		var rect = view._slot_rect("left")
+		var shadow = view._shadows["left"]
+		var mark = view._mark_slots["left"]
+		check(is_equal_approx(rect.scale.x, 1.4) and rect.scale == shadow.scale and rect.scale == mark.scale, "%d-person scale updates sprite, shadow and exchange marker" % count)
+		var center = view.stage.position + view._mark_center("left") * view.stage.scale.x
+		check(view.pick_at(center) == "left" and rect.position.distance_to(shadow.position) > 0, "%d-person touch targets track transformed art and marker" % count)
+		sex._harem_sel = "left"
+		sex._refresh_harem(state)
+		check(rect.material != null, "%d-person visible selection outline" % count)
+		group.move(state, "left", "back")
+		sex.refresh()
+		check(group.slots(state).left == "sakuya" and view._transforms.left.x == 24, "%d-person seat exchange selects new seat/character layout" % count)
+		group.move(state, "back", "partner")
+		sex.refresh()
+		check(state.scene.id == "marisa" and view._transforms.partner.x == -34, "%d-person partner exchange applies incoming layout" % count)
+		state.scene = {}
+		sex.refresh()
+
+func settings_tests(restart: bool) -> void:
+	var vitals = load("res://scripts/mod_vitals.gd")
+	var runtime = load("res://scripts/scenarios/runtime.gd")
+	var preferences = load("res://scripts/scenarios/appearance_preferences.gd")
+	if restart:
+		check(not vitals.enabled() and runtime.on(game.state, "cut_in"), "restart preserves user-modified faint and cut-in switches")
+		var cfg = ConfigFile.new()
+		check(cfg.load(vitals.PATH) == OK and cfg.get_value("vitals", "default_on_v56") and not cfg.get_value("vitals", "enabled"), "v56 migration is not rerun")
+	else:
+		check(vitals.enabled() and not runtime.on(game.state, "cut_in"), "default faint ON and cut-in OFF")
+		check(vitals.set_enabled(game.state, false) == OK and preferences.write_many({"feature_cut_in": true}) == OK, "save user-modified switches")
 
 func layout_tests() -> void:
 	game.new_game()
@@ -216,4 +291,6 @@ func run() -> void:
 	if not restart:
 		await visit_tests()
 		await layout_tests()
+		await group_layout_tests()
+	settings_tests(restart)
 	finish()
