@@ -121,7 +121,7 @@ static func night_visits(state: State, escorted: String = "") -> Array:
 			msgs.append_array(Events.event_lines(state, "late_visit"))
 			state.cue("noise", "footstep")
 			to_pc.sort_custom(_visit_first)
-			if NewGame.mod_enabled(state, "multi_visit_sleep") and to_pc.size() >= 3:
+			if to_pc.size() >= 3:
 				msgs.append_array(_offer_group_visit(state, to_pc))
 				for id in state.heroine_ids():
 					var h: Dictionary = state.heroines[id]
@@ -152,8 +152,7 @@ static func night_visits(state: State, escorted: String = "") -> Array:
 				state.set_room(clashed, state.pc["room"])
 				state.see(clashed)
 				state.pending["clash"] = clashed
-				if NewGame.mod_enabled(state, "multi_visit_sleep"):
-					state.pending["clash_receipt"] = clash_receipt
+				state.pending["clash_receipt"] = clash_receipt
 				state.pending["options"] = clash_options(state, state.pending)
 				if state.heroines[clashed].has("want_visit_now"):
 					state.pending["saw_want_other"] = str(state.heroines[clashed]["want_visit_now"])
@@ -277,12 +276,13 @@ static func _resolve_clash(state: State, p: Dictionary, option: String) -> Array
 
 	var a: String = p["id"]
 	var b: String = p["clash"]
-	if option == "accept_both":
+	if option in ["accept_all", "accept_both"]:
 		return _resolve_clash_both(state, p)
 	var chosen: = a if option == "accept" else (b if option == "accept_other" else "")
 	var msgs: = []
 	if chosen.is_empty():
 		for id in [a, b]:
+			state.heroines[id]["cuddle_visit"] = false
 			var sub: = {"kind": "visit", "id": id}
 			var saw: = str(p.get("saw_want" if id == a else "saw_want_other", ""))
 			if not saw.is_empty():
@@ -303,6 +303,7 @@ static func _resolve_clash(state: State, p: Dictionary, option: String) -> Array
 	msgs.append(Dialogue.line(state, other, "clash_sent_back", {}, {"other": state.short_name(chosen)}))
 	if not other_saw.is_empty() and state.relation(other, "pc") == "crush":
 		Events.saw_crush_drop(state, other, other_saw)
+	state.heroines[other]["cuddle_visit"] = false
 	state.set_room(other, Clock.own_room(other))
 	Events._set_remark(state, other, "pc", "clash", chosen)
 	msgs.append_array(EventsLeverage.underwear_notice(state))
@@ -597,21 +598,17 @@ static func lock_line(state: State, id: String) -> String:
 	return I18n.t("%sが戸に鍵をかけた。") % state.short_name(id)
 
 
+static func _visitor_available(state: State, id: String, room: String) -> bool:
+	return state.heroines.has(id) and state.room_of(id) == room and not state.is_asleep(id) and not state.in_sex(id) and not state.sleep_drugged(id)
+
+
 static func both_visit_reason(state: State, p: Dictionary) -> String:
 	var a: = str(p.get("id", ""))
 	var b: = str(p.get("clash", ""))
-	var changed: = I18n.t("상황이 달라져 둘 다 맞이할 수 없습니다. 다른 선택을 해 주세요.")
-	if not NewGame.mod_enabled(state, "multi_visit_sleep") or p.get("kind", "") != "visit" or not p.get("clash_receipt", {}) is Dictionary:
-		return changed
-	if state.pc["room"] != Clock.own_room("pc") or not EventsNight.clash_receipt_ok(state, p.get("clash_receipt", {}), a, b):
-		return changed
-	for id in [a, b]:
-		if state.room_of(id) != state.pc["room"]:
-			return changed
-		var reason: = SceneSexHarem.join_reason(state, id)
-		if not reason.is_empty():
-			return reason
-	return SceneSexHarem.mix_reason(state, [a, b])
+	var room: String = state.pc["room"]
+	if p.get("kind", "") != "visit" or a == b or room != Clock.own_room("pc") or not _visitor_available(state, a, room) or not _visitor_available(state, b, room):
+		return I18n.t("상황이 달라져 둘 다 맞이할 수 없습니다. 다른 선택을 해 주세요.")
+	return ""
 
 
 static func clash_options(state: State, p: Dictionary) -> Array:
@@ -619,14 +616,15 @@ static func clash_options(state: State, p: Dictionary) -> Array:
 		{"id": "accept", "label": I18n.t("%sを入れる") % state.short_name(str(p["id"]))}, 
 		{"id": "accept_other", "label": I18n.t("%sを入れる") % state.short_name(str(p["clash"]))}, 
 	]
-	if both_visit_reason(state, p).is_empty():
-		opts.append({"id": "accept_both", "label": I18n.t("둘 다 맞이하기")})
+	var reason: = both_visit_reason(state, p)
+	opts.append({"id": "accept_all", "label": I18n.t("모두 받아들이기"), "disabled": not reason.is_empty(), "reason": reason})
 	opts.append({"id": "refuse", "label": I18n.t("二人とも帰す"), "default": true})
 	return opts
 
 
 static func _resolve_clash_both(state: State, p: Dictionary) -> Array:
-	if p.get("clash_receipt", {}) is Dictionary and p.get("clash_receipt", {}).get("used", false):
+	var receipt = p.get("clash_receipt", {})
+	if receipt is Dictionary and receipt.get("used", false):
 		return []
 	var reason: = both_visit_reason(state, p)
 	if not reason.is_empty():
@@ -635,8 +633,9 @@ static func _resolve_clash_both(state: State, p: Dictionary) -> Array:
 		return [reason]
 	var a: = str(p["id"])
 	var b: = str(p["clash"])
-	if not EventsNight.refund_clash(state, p["clash_receipt"], a, b):
-		return []
+	# Old saves can lack a receipt. Refund the original clash only when its deltas are still valid.
+	if receipt is Dictionary:
+		EventsNight.refund_clash(state, receipt, a, b)
 	var msgs: = [I18n.t("%s, 두 사람을 방에 맞이했다.") % state.short_names([a, b])]
 	for id in [a, b]:
 		state.heroines[id]["night_welcomed"] = true
@@ -672,13 +671,11 @@ static func _group_visit_reason(state: State, p: Dictionary, chosen: Array) -> S
 	if state.pc["room"] != p.get("room", "") or state.day != int(p.get("day", -1)) or state.slot != p.get("slot", ""):
 		return I18n.t("상황이 달라졌다.")
 	for id in chosen:
-		if not state.heroines.has(id) or not p["visitors"].has(id) or state.room_of(id) != p["room"]:
+		if not p["visitors"].has(id) or not _visitor_available(state, id, p["room"]):
 			return I18n.t("상황이 달라졌다.")
-		if state.is_asleep(id) or state.in_sex(id) or state.sleep_drugged(id): return I18n.t("상황이 달라졌다.")
-		if chosen.size() > 1:
-			var reason: = SceneSexHarem.join_reason(state, id)
-			if not reason.is_empty(): return reason
-	return SceneSexHarem.mix_reason(state, chosen) if chosen.size() > 1 else ""
+	# Joining a room does not start a group encounter. The later action still checks eligibility.
+	return ""
+
 
 
 static func group_visit_options(state: State, p: Dictionary) -> Array:
@@ -701,7 +698,7 @@ static func cancel_group_visit(state: State, p: Dictionary) -> void :
 
 
 static func _resolve_group_visit(state: State, p: Dictionary, option: String) -> Array:
-	if not NewGame.mod_enabled(state, "multi_visit_sleep") or state.pc["room"] != p.get("room", "") or state.day != int(p.get("day", -1)) or state.slot != p.get("slot", ""):
+	if state.pc["room"] != p.get("room", "") or state.day != int(p.get("day", -1)) or state.slot != p.get("slot", ""):
 		cancel_group_visit(state, p)
 		return []
 	var visitors: Array = p["visitors"]

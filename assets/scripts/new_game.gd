@@ -328,20 +328,13 @@ static func refresh_mod_pending(state: State) -> void :
 	if p.get("kind", "") == "morning_bed" and p.has("group_guest") and not EventsNight.group_morning_offer_ok(state, p):
 		state.pending = {}
 		return
-	if p.get("kind", "") == "visit" and p.has("visitors"):
-		if mod_enabled(state, "multi_visit_sleep"):
-			p["options"] = BehaviorNight.group_visit_options(state, p)
-		else:
-			BehaviorNight.cancel_group_visit(state, p)
-			state.pending = {}
+	if p.get("kind", "") != "visit":
 		return
-	if p.get("kind", "") != "visit" or str(p.get("clash", "")).is_empty():
-		return
-
-
-
-	if p.has("clash_receipt") or p.get("options", []).any( func(o): return o is Dictionary and o.get("id", "") == "accept_both"):
+	if p.has("visitors"):
+		p["options"] = BehaviorNight.group_visit_options(state, p)
+	elif not str(p.get("clash", "")).is_empty():
 		p["options"] = BehaviorNight.clash_options(state, p)
+
 
 
 static func apply_mod_settings(state: State, raw: Variant) -> void :

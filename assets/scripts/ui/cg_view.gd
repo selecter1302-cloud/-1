@@ -128,6 +128,7 @@ var cg: = ""
 var expression: = ""
 var cross_section: CrossSectionView
 var face_window: FaceWindowView
+var _source_expression: String
 var _shaft_spec: Dictionary = {}
 var shaft_x_scale: = 1.0
 var debug_shaft: Dictionary = {}
@@ -232,6 +233,7 @@ func show_cg(id: String, p_cg: String, p_expression: String, inserted: bool, p_c
 
 	character_id = id
 	cg = p_cg
+	_source_expression = p_expression
 	p_expression = load("res://scripts/scenarios/expression_filter.gd").resolve_expression(id, p_cg, p_expression)
 	_group.visible = p_expression != "__no_face__"
 	expression = p_expression
@@ -468,6 +470,7 @@ static func _face_texture(id: String, pose: String, key: String) -> Texture2D:
 	return load("res://scripts/scenarios/expression_filter.gd").raw_texture(face_path(id, pose, key))
 
 func set_face(p_expression: String) -> void :
+	_source_expression = p_expression
 	p_expression = load("res://scripts/scenarios/expression_filter.gd").resolve_expression(character_id, cg, p_expression)
 	_group.visible = p_expression != "__no_face__"
 
@@ -480,7 +483,7 @@ func set_face(p_expression: String) -> void :
 func _sync_face_window() -> void :
 
 	if face_window != null:
-		face_window.show_for(character_id, cg, expression, visible)
+		face_window.show_for(character_id, cg, _source_expression, visible and expression != "__no_face__")
 
 
 static func cg_for(id: String, position: String) -> String:

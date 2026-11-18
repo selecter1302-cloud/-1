@@ -8,11 +8,13 @@ extends Control
 
 const MARGIN: = 8.0
 const PAD: = 3.0
+const F = preload("res://scripts/scenarios/expression_filter.gd")
 
 var cfg: Dictionary = {}
 var top: = MARGIN
 var character_id: = ""
 var expression: = ""
+var expression_view: String
 
 var _inner: Control
 var _base: TextureRect
@@ -65,10 +67,19 @@ func show_for(id: String, p_cg: String, p_expression: String, on: bool) -> void 
 		hide()
 		return
 	character_id = id
-	expression = p_expression
 	var src: = str(cfg["from"])
+	expression_view = F.DOGGY_WINDOW if p_cg == "doggy" else src
+	expression = F.resolve_expression(id, expression_view, p_expression)
 	_base.texture = CgView._load(CgView.base_path(id, src))
-	_face.texture = CgView._load(CgView.face_path(id, src, p_expression))
+	if _base.texture == null:
+		hide()
+		return
+	var row: Dictionary = F.entry(id, expression_view, expression)
+	var path = CgView.face_path(id, src, expression) if row.is_empty() else str(row.path)
+	# The shared source image must bypass the donor pose's expression preferences.
+	_face.texture = null
+	if expression != "__no_face__" and not bool(row.get("baked", false)):
+		_face.texture = load("res://scripts/scenarios/art_access.gd").raw_texture(path)
 	_face.visible = _face.texture != null
 	_layout(cfg["rects"][id])
 	show()

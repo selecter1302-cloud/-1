@@ -9,3 +9,7 @@ User-supplied split ZIP (.z01 through .z20 and .zip) is the build input. Assembl
 Signing inputs: supplied android-release.keystore, alias gensokyomod, and supplied signing-password.txt. Use apksigner file-based passwords. Keep both outside all Git checkouts. Expected certificate SHA-256: 52a1b6f90047314502c2160124f655c7add4d3aa8d7ecb05152b710d56434297.
 
 Status: initial checkpoint. Split input retrieval in progress. Source changes, installation verification, signing, and release pending.
+
+Input verified: the attached split set required directory-offset reconstruction (Info-ZIP created a truncated join). tools/join_split_zip.py rebuilt the 21 parts and verified member CRCs. Extracted APK matched the prescribed SHA-256 and the independent Git LFS download byte for byte. The baseline package/version were verified with aapt2. The original APK certificate and keytool certificate matched. Android SDK Build Tools 35.0.0 archive from dl.google.com matched Google repository checksum 2cfaa0bbb2336e9ec18ed3ecea84fa2e2af607bc (SHA-1). Godot 4.6.3 is installed.
+
+WIP: the face-window view now keeps its own expression preferences while loading its configured donor crop. Multi-visitor door prompts use room availability and keep group-action eligibility checks downstream. Functional validation and packaging pending.

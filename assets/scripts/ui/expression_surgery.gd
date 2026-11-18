@@ -68,8 +68,10 @@ func visible_contexts() -> Array:
 		elif sx._fellatio.visible: view = "fellatio";fallback = str(sx._fellatio.shown_face)
 		elif sx._paizuri.visible: view = "paizuri";fallback = str(sx._paizuri.shown_face)
 		elif sx._portrait.visible: view = "scene_portrait";fallback = str(sx._portrait.expression)
-		if view == "doggy" and sx._face_window.visible:
-			view = str(sx._face_window.cfg.get("from", "missionary"));fallback = str(sx._face_window.expression)
+		if sx._face_window.is_visible_in_tree():
+			id = sx._face_window.character_id
+			view = sx._face_window.expression_view
+			fallback = sx._face_window.expression
 		if WHO.has(id) and F.VIEWS.has(view): result.append(S.observed(st, id, view, fallback))
 		if SceneSexHarem.active(st) and sx._harem.visible:
 			var slots = SceneSexHarem.slots(st)
@@ -205,7 +207,10 @@ func open_conditions() -> void:
 func _save_set() -> void:
 	if _capture_session and not _context_valid(_context): _set_summary.text = "인물·화면·관계가 바뀌었습니다. 다시 열어 주세요.";return
 	var err = S.save_set(_context, _set_choices, _edit_token)
-	if err == OK: close()
+	if err == OK:
+		if str(_context.view) == F.DOGGY_WINDOW and _main.sex_scene._face_window.is_visible_in_tree():
+			_main.sex_scene._cg._sync_face_window()
+		close()
 	else: _set_summary.text = "저장 실패: 표정을 하나 이상 선택하고 제외/OFF 설정을 확인해 주세요."
 func confirm_delete(row: Dictionary) -> void:
 	_capture_session = false;_main.get_node("F3ModWindow").close_window();var box = _begin();_label(box, "이 표정 집합을 삭제할까요?");_label(box, _condition(row))

@@ -1,7 +1,8 @@
 extends RefCounted
 const FILE = "user://mod_expression_filters.cfg"
 const IDS = ["reimu", "sakuya", "marisa", "sanae"]
-const VIEWS = {"standing": "평상시 · 스탠딩", "scene_portrait": "H씬 · 초상화", "missionary": "H씬 · 정상위", "doggy": "H씬 · 후배위 · 얼굴층 없음", "cowgirl": "H씬 · 기승위", "fellatio": "H씬 · 구강", "paizuri": "H씬 · 가슴", "harem_front": "다함께 · 앞쪽", "harem_peek": "다함께 · 뒤쪽"}
+const DOGGY_WINDOW = "doggy_window"
+const VIEWS = {"standing": "평상시 · 스탠딩", "scene_portrait": "H씬 · 초상화", "missionary": "H씬 · 정상위", "doggy": "H씬 · 후배위 · 얼굴층 없음", DOGGY_WINDOW: "H씬 · 후배위 · 작은 표정 화면", "cowgirl": "H씬 · 기승위", "fellatio": "H씬 · 구강", "paizuri": "H씬 · 가슴", "harem_front": "다함께 · 앞쪽", "harem_peek": "다함께 · 뒤쪽"}
 const RELATIONS = {"*": "공통 · 모든 관계", "stranger": "타인", "friend": "친구", "crush": "짝사랑", "lover": "연인", "quarrel": "싸우는 중", "wavering": "마음이 변함", "ex": "옛 연인", "hate": "싫어함", "submit": "굴복", "coerced": "협박 중"}
 static var _loaded = false
 static var _rows: Array = []
@@ -98,14 +99,27 @@ static func visible_entries(id: String, view: String) -> Array:
 	return entries(id, view).filter(func(row): return not deleted(id, view, str(row.key)))
 static func identity(id: String, view: String, key: String) -> String: return id + "|" + view + "|" + key
 static func address(id: String, view: String, rel: String, key: String = "") -> String: return id + "|" + view + "|" + normalize_relation(rel) + ("|" + key if key != "" else "")
+static func window_config() -> Dictionary:
+	var tree = Engine.get_main_loop()
+	var gs = tree.root.get_node_or_null("GameState") if tree is SceneTree else null
+	return gs.data.get("cross_section", {}).get("face_window", {}) if gs != null else {}
+
+static func _asset_view(id: String, view: String) -> String:
+	if view == DOGGY_WINDOW:
+		var cfg = window_config()
+		if "doggy" in cfg.get("cgs", []) and cfg.get("rects", {}).has(id):
+			return str(cfg.get("from", ""))
+		return ""
+	return "standing" if view == "scene_portrait" else view
+
 static func entries(id: String, view: String) -> Array:
 	ensure()
 	if view == "doggy": return [{"id": id, "view": view, "key": "default", "source": "native", "path": "res://art/%s/doggy/base.png" % id, "baked": true}]
-	var cache_key = id + "|" + view
+	var source_view = _asset_view(id, view)
+	var cache_key = id + "|" + view + "|" + source_view
 	if _entries.has(cache_key): return _entries[cache_key]
-	var source_view = "standing" if view == "scene_portrait" else view
 	var rows = _rows.filter( func(row): return str(row.id) == id and str(row.view) == source_view)
-	if view == "scene_portrait":
+	if view != source_view:
 		rows = rows.duplicate(true)
 		for row in rows: row["view"] = view
 	_entries[cache_key] = rows
@@ -113,8 +127,9 @@ static func entries(id: String, view: String) -> Array:
 static func entry(id: String, view: String, key: String) -> Dictionary:
 	ensure()
 	if view == "doggy" and key == "default": return entries(id, view)[0]
-	var row: Dictionary = _by_key.get(identity(id, "standing" if view == "scene_portrait" else view, key), {})
-	if view == "scene_portrait" and not row.is_empty(): row = row.duplicate(true);row["view"] = view
+	var source_view = _asset_view(id, view)
+	var row: Dictionary = _by_key.get(identity(id, source_view, key), {})
+	if view != source_view and not row.is_empty(): row = row.duplicate(true);row["view"] = view
 	return row
 static func default_entry(id: String, key: String) -> Dictionary:
 	for view in VIEWS:
@@ -351,6 +366,7 @@ static func thumbnail(row: Dictionary, px: int = 112) -> Texture2D:
 	if row.is_empty() or deleted(str(row.id), str(row.view), str(row.key)): return null
 	px = 192 # One shared face-centered thumbnail size throughout all editors.
 	var cache = str(row.path)
+	if str(row.view) == DOGGY_WINDOW: cache = DOGGY_WINDOW + "|" + cache
 	if _thumbs.has(cache):
 		_thumb_order.erase(cache);_thumb_order.append(cache);return _thumbs[cache]
 	var disk = THUMB_DIR + "/" + cache.sha256_text() + ".png"
@@ -381,14 +397,21 @@ static func preview_texture(row: Dictionary, px: int = 640) -> Texture2D:
 	if view in ["standing", "scene_portrait"]: base_path = "res://art/%s/%s_body_normal.png" % [id, id]
 	elif view.begins_with("harem_"): base_path = ""
 	elif view == "fellatio": base_path = "res://art/%s/fellatio/head.png" % id
-	else: base_path = "res://art/%s/%s/base.png" % [id, view]
+	else: base_path = "res://art/%s/%s/base.png" % [id, _asset_view(id, view)]
 	var base = _image(base_path) if base_path != "" else null
 	var image = overlay.duplicate()
 	if base != null:
 		image = base.duplicate();image.blend_rect(overlay, Rect2i(Vector2i.ZERO, overlay.get_size()), Vector2i.ZERO)
 
 	var bounds = overlay.get_used_rect()
-	if view.begins_with("harem_"):
+	if view == DOGGY_WINDOW:
+		var rect: Array = window_config()["rects"][id]
+		var size = Vector2(image.get_size())
+		var start = Vector2i(size * Vector2(rect[0], rect[1]))
+		var end = Vector2i(size * Vector2(rect[2], rect[3]))
+		var crop = Rect2i(start, end - start).intersection(Rect2i(Vector2i.ZERO, image.get_size()))
+		if crop.has_area(): image = image.get_region(crop)
+	elif view.begins_with("harem_"):
 		# Native base/face difference bounds locate the actual face, not the full figure.
 		var regions = {"reimu": {"harem_front": Rect2i(222,151,195,232), "harem_peek": Rect2i(456,482,129,122)}, "sakuya": {"harem_front": Rect2i(219,168,206,215), "harem_peek": Rect2i(470,477,130,115)}, "marisa": {"harem_front": Rect2i(221,165,204,210), "harem_peek": Rect2i(476,483,124,103)}, "sanae": {"harem_front": Rect2i(161,162,266,222), "harem_peek": Rect2i(473,480,111,93)}}
 		bounds = regions.get(id, {}).get(view, bounds)
