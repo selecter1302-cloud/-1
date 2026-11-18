@@ -45,7 +45,7 @@ change("ui/face_window_view.gd", '''\tif not on or p_expression == "__no_face__"
 \t\t\treturn
 \t\tvar row: Dictionary = filter.entry(id, "doggy_monitor", expression)
 \t\tvar path: String = str(row.get("path", CgView.face_path(id, src, expression)))
-\t\t# Loading art directly avoids applying front-view preferences a second time.
+\t\t# Loading art directly avoids applying the front-view preferences a second time.
 \t\tif path.begins_with("res://scripts/scenarios/art/"):
 \t\t\t_face.texture = load("res://scripts/scenarios/art_access.gd").raw_texture(path)
 \t\telse:
