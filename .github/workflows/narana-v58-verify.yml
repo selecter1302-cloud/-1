@@ -74,3 +74,5 @@ jobs:
           unzip -qo /tmp/godot463.zip -d /tmp/
           chmod +x /tmp/Godot_v4.6.3-stable_linux.x86_64
           /tmp/Godot_v4.6.3-stable_linux.x86_64 --version
+
+# Verify canonical patch bytes
