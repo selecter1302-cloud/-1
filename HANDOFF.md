@@ -51,3 +51,13 @@ bash tools/test_sparse.sh /workspace/narana-work/rebuilt-v58.apk /workspace/nara
 The build replaces the six scripts, drops their stale compiled counterparts, and rebuilds the sparse directory. The audit checks all 2,884 entries, APK Asset membership, size and MD5/CRC, and source bytes. `apksigner` v2/v3 verification, `zipalign`, arm64 ZIP and ELF 16 KiB alignment, and app identity checks passed. Native ARM64 libraries are stored and aligned; the original Android native extraction setting stays intact. The same optional themed-icon warning appears on both the v57 and v58 manifest inspections.
 
 Godot on Linux loads the actual signed APK's sparse pack with the APK assets as backing files. The signed main run passed 98 assertions, including expression capture/save and actual texture, separate presets, long-press preview and copy, 2/3/4 visitor actions and subsequent progression, menu layout, 3/4-person layouts and swaps, and save loading. This is a headless functional run. Android device/emulator installation has not been run in this environment.
+
+## Release and final verification
+
+The separate-process signed sparse run passed 10 more assertions. It verified the saved small-window expression, other branches, saved layout, and the user-modified faint/cut-in options after restart. A separate clone of source checkpoint `1610e519982908305773536fdfc074bc6c298f52` installed the checked Android tools and reproduced the exact signed APK SHA-256.
+
+The GitHub release branch is `narana-v58-fixes-20261119`, commit `e61f14ea58a39455df54218905a738c93462b6dc`. Git LFS uploaded the complete ZIP. An independently initialized, empty Git repository fetched the release ref and downloaded the actual 511901524-byte LFS object. Its ZIP and nested APK SHA-256 values matched and `git lfs fsck` passed. The v57 remote branch still points to its original commit.
+
+Direct URL: https://media.githubusercontent.com/media/selecter1302-cloud/-1/refs/heads/narana-v58-fixes-20261119/Narana-0.14.7-v58.zip
+
+The cloud proxy returned CONNECT 403 on this direct URL. The verified cloud workspace APK copy is `/workspace/shared/downloads/Narana-0.14.7-v58.apk`. The environment's install script and start instructions were saved to the configuration draft. Publication and new-environment restoration are separate from the tested clean source clone.
