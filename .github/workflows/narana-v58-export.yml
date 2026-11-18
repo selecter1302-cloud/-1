@@ -1,0 +1,33 @@
+name: Narana v58 APK source workspace export
+on:
+  push:
+    paths: ['.github/workflows/narana-v58-export.yml']
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout LFS
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+      - name: Extract source and sparse pack from verified original APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '3f5cc8f872d7f9bf63a479adbc6de00c2819fdc73266fb4e9cee992e8aa19909  Narana-0.14.7-layout-v57.zip' | sha256sum -c
+          unzip -p Narana-0.14.7-layout-v57.zip Narana-0.14.7-layout-v57.apk > /tmp/narana-v57.apk
+          echo 'f250f70ca53c2a5d1740a348185309b44b8454e5c2c52d148b8135894a18081b  /tmp/narana-v57.apk' | sha256sum -c
+          mkdir -p /tmp/narana-v57-source
+          cd /tmp/narana-v57-source
+          unzip -q /tmp/narana-v57.apk 'assets/scripts/*' 'assets/assets.sparsepck' 'AndroidManifest.xml'
+          tar -czf "$GITHUB_WORKSPACE/v57-scripts-sparse.tar.gz" assets AndroidManifest.xml
+          ls -lh "$GITHUB_WORKSPACE/v57-scripts-sparse.tar.gz"
+      - name: Upload source workspace for inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: v57-scripts-sparse
+          path: v57-scripts-sparse.tar.gz
+          retention-days: 1
